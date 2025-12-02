@@ -477,8 +477,8 @@ func toMessage(tx stTransaction, ps stPostState, baseFee *big.Int) (protocol.Mes
 		uint256.MustFromBig(&tipCap),
 		data,
 		accessList,
-		false, /* checkNonce */
-		false, /* checkTransaction */
+		true,  /* checkNonce */
+		true,  /* checkTransaction */
 		true,  /* checkGas */
 		false, /* isFree */
 		uint256.MustFromBig(blobFeeCap),
