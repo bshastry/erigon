@@ -46,9 +46,36 @@ import (
 	"github.com/erigontech/erigon/db/kv"
 	"github.com/erigontech/erigon/db/kv/temporal/temporaltest"
 	"github.com/erigontech/erigon/execution/tests/testutil"
+	"github.com/erigontech/erigon/execution/tracing"
 	"github.com/erigontech/erigon/execution/vm"
 	"github.com/holiman/goevmlab/fuzzing/mutations"
 )
+
+// errExecutionCancelled is a sentinel error used to signal context cancellation
+var errExecutionCancelled = fmt.Errorf("execution cancelled")
+
+// cancellationTracer is a minimal tracer that checks for context cancellation
+// on each opcode execution, allowing us to abort runaway EVM execution.
+// This prevents goroutine leaks when tests timeout.
+type cancellationTracer struct {
+	ctx     context.Context
+	counter uint64
+}
+
+// Hooks returns the tracing hooks with cancellation checking on each opcode
+func (t *cancellationTracer) Hooks() *tracing.Hooks {
+	return &tracing.Hooks{
+		OnOpcode: func(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+			// Check every 100 opcodes to reduce overhead while still being responsive
+			t.counter++
+			if t.counter%100 == 0 {
+				if t.ctx.Err() != nil {
+					panic(errExecutionCancelled)
+				}
+			}
+		},
+	}
+}
 
 // TestFuzzErigonWithCustomMutator uses goevmlab's mutation strategies.
 //
@@ -96,8 +123,12 @@ func TestFuzzErigonWithCustomMutator(t *testing.T) {
 	var (
 		totalExecs    int64
 		totalCrashes  int64
+		totalTimeouts int64
 		startTime     = time.Now()
 	)
+
+	// Per-test execution timeout to prevent infinite loops from high gas + looping bytecode
+	const testTimeout = 5 * time.Second
 
 	crashDir := filepath.Join("testdata", "custom_crashes")
 	os.MkdirAll(crashDir, 0755)
@@ -140,8 +171,13 @@ func TestFuzzErigonWithCustomMutator(t *testing.T) {
 				strategyName = "original"
 			}
 
-			crashed, panicVal := executeCustomTest(t, db, dirs, mutated)
-			if crashed {
+			// Execute the test with timeout protection
+			completed, crashed, panicVal := executeCustomTestWithTimeout(t, db, dirs, mutated, testTimeout)
+
+			if !completed {
+				// Timed out - silently skip (not a crash, just runaway execution)
+				atomic.AddInt64(&totalTimeouts, 1)
+			} else if crashed {
 				logCrashCustom(mutated, panicVal, strategyName)
 			}
 
@@ -169,9 +205,10 @@ func TestFuzzErigonWithCustomMutator(t *testing.T) {
 				elapsed := time.Since(startTime)
 				execs := atomic.LoadInt64(&totalExecs)
 				crashes := atomic.LoadInt64(&totalCrashes)
+				timeouts := atomic.LoadInt64(&totalTimeouts)
 				rate := float64(execs) / elapsed.Seconds()
-				t.Logf("elapsed: %v, execs: %d (%.0f/sec), crashes: %d",
-					elapsed.Round(time.Second), execs, rate, crashes)
+				t.Logf("elapsed: %v, execs: %d (%.0f/sec), crashes: %d, timeouts: %d",
+					elapsed.Round(time.Second), execs, rate, crashes, timeouts)
 			case <-done:
 				return
 			}
@@ -197,6 +234,7 @@ func TestFuzzErigonWithCustomMutator(t *testing.T) {
 	elapsed := time.Since(startTime)
 	execs := atomic.LoadInt64(&totalExecs)
 	crashes := atomic.LoadInt64(&totalCrashes)
+	timeouts := atomic.LoadInt64(&totalTimeouts)
 	rate := float64(execs) / elapsed.Seconds()
 
 	t.Logf("\n=== Final Results ===")
@@ -204,13 +242,89 @@ func TestFuzzErigonWithCustomMutator(t *testing.T) {
 	t.Logf("Total executions: %d", execs)
 	t.Logf("Rate: %.0f exec/sec", rate)
 	t.Logf("Crashes found: %d", crashes)
+	t.Logf("Timeouts: %d (tests exceeding %v)", timeouts, testTimeout)
 
 	if crashes > 0 {
 		t.Logf("Crash files: %s", crashDir)
 	}
 }
 
-// executeCustomTest runs a state test and catches panics.
+// executeCustomTestWithTimeout runs a state test with a timeout to prevent infinite loops.
+// Uses context cancellation to properly stop EVM execution and prevent goroutine leaks.
+// Returns: completed (finished before timeout), crashed (panic occurred), panicVal (panic value if crashed)
+func executeCustomTestWithTimeout(t testing.TB, db kv.TemporalRwDB, dirs datadir.Dirs, testJSON []byte, timeout time.Duration) (completed bool, crashed bool, panicVal any) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	crashed, panicVal = executeCustomTestWithContext(t, ctx, db, dirs, testJSON)
+
+	// Check if we timed out
+	if ctx.Err() == context.DeadlineExceeded {
+		return false, false, nil // Timeout, not a crash
+	}
+
+	return true, crashed, panicVal
+}
+
+// executeCustomTestWithContext runs a state test with context cancellation support.
+// The cancellation tracer will panic when the context is cancelled, which we catch
+// and distinguish from real crashes.
+func executeCustomTestWithContext(t testing.TB, ctx context.Context, db kv.TemporalRwDB, dirs datadir.Dirs, testJSON []byte) (crashed bool, panicVal any) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Check if this was our cancellation panic
+			if r == errExecutionCancelled {
+				// Clean timeout, not a crash
+				crashed = false
+				panicVal = nil
+				return
+			}
+			// Real crash
+			crashed = true
+			panicVal = r
+		}
+	}()
+
+	var stateTests map[string]testutil.StateTest
+	if err := json.Unmarshal(testJSON, &stateTests); err != nil {
+		return false, nil
+	}
+
+	// Create cancellation tracer
+	tracer := &cancellationTracer{ctx: ctx}
+
+	for _, test := range stateTests {
+		for _, subtest := range test.Subtests() {
+			if !isSupportedFork(subtest.Fork) {
+				continue
+			}
+
+			// Check context before starting each subtest
+			if ctx.Err() != nil {
+				return false, nil
+			}
+
+			tx, err := db.BeginTemporalRw(ctx)
+			if err != nil {
+				continue
+			}
+
+			func() {
+				defer tx.Rollback()
+				// Run with our cancellation tracer
+				cfg := vm.Config{
+					Tracer: tracer.Hooks(),
+				}
+				_, _, _, _ = test.RunNoVerify(t, tx, subtest, cfg, dirs)
+			}()
+		}
+	}
+
+	return false, nil
+}
+
+// executeCustomTest runs a state test and catches panics (without timeout).
+// Kept for backwards compatibility with repro_crash_test.go.
 func executeCustomTest(t testing.TB, db kv.TemporalRwDB, dirs datadir.Dirs, testJSON []byte) (crashed bool, panicVal any) {
 	defer func() {
 		if r := recover(); r != nil {
