@@ -315,3 +315,8 @@ require (
 )
 
 replace github.com/ajwerner/btree => github.com/anacrolix/btree v0.0.0-20251103085645-fd1051eb0009
+
+require github.com/holiman/goevmlab v0.0.0
+
+// goevmlab mutations branch: git checkout mutations in ../goevmlab
+replace github.com/holiman/goevmlab => ../goevmlab

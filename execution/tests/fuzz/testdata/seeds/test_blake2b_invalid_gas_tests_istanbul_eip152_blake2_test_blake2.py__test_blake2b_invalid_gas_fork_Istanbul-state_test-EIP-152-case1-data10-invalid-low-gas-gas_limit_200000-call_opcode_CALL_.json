@@ -1,0 +1,97 @@
+{
+  "tests/istanbul/eip152_blake2/test_blake2.py::test_blake2b_invalid_gas[fork_Istanbul-state_test-EIP-152-case1-data10-invalid-low-gas-gas_limit_200000-call_opcode_CALL]": {
+    "env": {
+      "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
+      "currentGasLimit": "0x055d4a80",
+      "currentNumber": "0x01",
+      "currentTimestamp": "0x03e8",
+      "currentDifficulty": "0x020000"
+    },
+    "pre": {
+      "0x0b3ebfa463ef4cd2c1b571c549b56f053f902918": {
+        "nonce": "0x01",
+        "balance": "0x00",
+        "code": "0x3660006000376040610200366000600060095af1600055610200516001556102205160025500",
+        "storage": {
+          "0x00": "0xdeadbeef"
+        }
+      },
+      "0x854da978bb431e610d581dd484f392e32b33afaa": {
+        "nonce": "0x00",
+        "balance": "0x3635c9adc5dea00000",
+        "code": "0x",
+        "storage": {}
+      }
+    },
+    "transaction": {
+      "nonce": "0x00",
+      "gasPrice": "0x0a",
+      "gasLimit": [
+        "0x030d40"
+      ],
+      "to": "0x0b3ebfa463ef4cd2c1b571c549b56f053f902918",
+      "value": [
+        "0x00"
+      ],
+      "data": [
+        "0x000c"
+      ],
+      "sender": "0x854da978bb431e610d581dd484f392e32b33afaa",
+      "secretKey": "0x8cb20b6abc44c01a439856730b3ebfa463ef4cd2c1b571c549b56f053f902918"
+    },
+    "post": {
+      "Istanbul": [
+        {
+          "hash": "0xa65588d0d0b1acf2bcca257c9fdf8dc29791263df5f7374a28835d02924dbcae",
+          "logs": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+          "txbytes": "0xf862800a83030d40940b3ebfa463ef4cd2c1b571c549b56f053f9029188082000c26a042ed92ea8917bc5e89bb18ac5ec16ce4d30d4cc5dc389d787c411c9f5377bfa8a01e3b776cbd69936b1cfa4de88608f020bfb23f5c582fa5543698f5eb94f854f8",
+          "indexes": {
+            "data": 0,
+            "gas": 0,
+            "value": 0
+          },
+          "state": {
+            "0x0b3ebfa463ef4cd2c1b571c549b56f053f902918": {
+              "nonce": "0x01",
+              "balance": "0x00",
+              "code": "0x3660006000376040610200366000600060095af1600055610200516001556102205160025500",
+              "storage": {
+                "0x00": "0xdeadbeef"
+              }
+            },
+            "0x854da978bb431e610d581dd484f392e32b33afaa": {
+              "nonce": "0x01",
+              "balance": "0x3635c9adc5de817b80",
+              "code": "0x",
+              "storage": {}
+            },
+            "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba": {
+              "nonce": "0x00",
+              "balance": "0x1e8480",
+              "code": "0x",
+              "storage": {}
+            }
+          }
+        }
+      ]
+    },
+    "config": {
+      "chainid": "0x01"
+    },
+    "_info": {
+      "hash": "0x655cd06bd558443bb8cc48b1da8571b0565aa52a831bd42a03d71aaeb3b2f202",
+      "comment": "`execution-spec-tests` generated test",
+      "filling-transition-tool": "ethereum-spec-evm-resolver 0.0.5",
+      "description": "Test BLAKE2b precompile invalid calls using different gas limits.",
+      "url": "https://github.com/ethereum/execution-spec-tests/tree/v5.3.0/tests/istanbul/eip152_blake2/test_blake2.py#L439",
+      "fixture-format": "state_test",
+      "reference-spec": "https://github.com/ethereum/EIPs/blob/master/EIPS/eip-152.md",
+      "reference-spec-version": "2762bfcff3e549ef263342e5239ef03ac2b07400",
+      "eels-resolution": {
+        "git-url": "https://github.com/ethereum/execution-specs.git",
+        "branch": "forks/bpos",
+        "commit": "7aacb2c54111391af5e98c505d5010b5698a770f"
+      }
+    }
+  }
+}
