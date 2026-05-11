@@ -148,11 +148,9 @@ func aggregateResultsFromStateTests(
 			// print state root for evmlab tracing
 			if statedb != nil {
 				result.Root = &root
-				if jsonOut {
-					_, printErr := fmt.Fprintf(os.Stderr, "{\"stateRoot\": \"%#x\"}\n", root.Bytes())
-					if printErr != nil {
-						log.Warn("Failed to write to stderr", "err", printErr)
-					}
+				_, printErr := fmt.Fprintf(os.Stderr, "{\"stateRoot\": \"%#x\"}\n", root.Bytes())
+				if printErr != nil {
+					log.Warn("Failed to write to stderr", "err", printErr)
 				}
 			}
 
